@@ -1,6 +1,6 @@
 # 2019 해커톤 SPEECH
 ### 대회운영 Q/A 링크(NSML, 운영방식, dataset 등)
-https://github.com/clovaai/speech_hackathon_2019/issues
+https://github.com/Naver-AI-Hackathon/AI-Speech/issues (최근 수정됨)
 ### NSML for 해커톤
 https://ai.nsml.navercorp.com/ 
 ### 해커톤 홈페이지
