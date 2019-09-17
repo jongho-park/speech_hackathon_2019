@@ -159,9 +159,11 @@ CRR = (1.0 - CER) * 100.0
   [hack]$ ./run.sh
   ```
 #### 3. 해커톤 데이터셋을 로컬에 다운받아서 학습하는 방법
-1. 데이터셋 다운로드 받기
+1. 데이터셋 다운로드 받기 (NSML에는 데이터셋이 미리 올라가 있으므로, nsml실행을 위해서 dataset을 download할 필요는 없음)<br>
+브라우즈에서 [1차 예선데이터셋 다운로드하기](https://drive.google.com/open?id=1UOspFSTJ2w0wsENIeD6Ilcy5dd4NTsDV) 눌러서 저장. 
   ```bash
-  [hack]$ nsml dataset pull sr-hack-2019-dataset [DOWNLOAD-PATH]
+ 
+  tar xvpf train.tar.gz (받은 후, 이 명령으로 압축을 풀수 있습니다.)
   ```
   
   * nsml을 cloud 환경으로 실행할 경우, 소스코드가 포함된 폴더를 전부 cloud로 업로드하기 때문에, 데이터셋은 nsml 소스코드 폴더와 다른 경로에 받아야 함
