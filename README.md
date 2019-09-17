@@ -215,7 +215,7 @@ CRR = (1.0 - CER) * 100.0
    * [feature](./docs/speech_hackathon_2019_chapter_1.pdf)
    * [baseline](./docs/speech_hackathon_2019_chapter_2.pdf)
 * NSML Document
-   * https://n-clair.github.io/airush-docs/_build/html/ko_KR/index.html
+   * https://n-clair.github.io/ai-docs/_build/html/ko_KR/index.html
 * Model
    * IBM pytorch-seq2seq (https://github.com/IBM/pytorch-seq2seq) 모델 사용
    
