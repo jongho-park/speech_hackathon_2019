@@ -14,33 +14,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-#-*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import os
-import sys
 import time
 import math
-import wavio
 import argparse
 import queue
-import shutil
 import random
-import math
-import time
 import torch
-import logging
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
-import torch.optim as optim
-import Levenshtein as Lev 
+import Levenshtein as Lev
 
 import label_loader
-from loader import *
+from loader import logger, get_spectrogram_feature, load_targets, BaseDataset, \
+    BaseDataLoader, MultiLoader, N_FFT
 from models import EncoderRNN, DecoderRNN, Seq2seq
 
 import nsml
-from nsml import GPU_NUM, DATASET_PATH, DATASET_NAME, HAS_DATASET
 
 char2index = dict()
 index2char = dict()
@@ -48,10 +40,12 @@ SOS_token = 0
 EOS_token = 0
 PAD_token = 0
 
-if HAS_DATASET == False:
-    DATASET_PATH = './sample_dataset'
-
+if nsml.HAS_DATASET:
+    DATASET_PATH = nsml.DATASET_PATH
+else:
+    DATASET_PATH = '/home/jongho/data/datasets/STT-NH'
 DATASET_PATH = os.path.join(DATASET_PATH, 'train')
+
 
 def label_to_string(labels):
     if len(labels.shape) == 1:
@@ -74,14 +68,16 @@ def label_to_string(labels):
 
         return sents
 
+
 def char_distance(ref, hyp):
-    ref = ref.replace(' ', '') 
-    hyp = hyp.replace(' ', '') 
+    ref = ref.replace(' ', '')
+    hyp = hyp.replace(' ', '')
 
     dist = Lev.distance(hyp, ref)
     length = len(ref.replace(' ', ''))
 
-    return dist, length 
+    return dist, length
+
 
 def get_distance(ref_labels, hyp_labels, display=False):
     total_dist = 0
@@ -91,7 +87,7 @@ def get_distance(ref_labels, hyp_labels, display=False):
         hyp = label_to_string(hyp_labels[i])
         dist, length = char_distance(ref, hyp)
         total_dist += dist
-        total_length += length 
+        total_length += length
         if display:
             cer = total_dist / total_length
             logger.debug('%d (%0.4f)\n(%s)\n(%s)' % (i, cer, ref, hyp))
@@ -134,7 +130,7 @@ def train(model, total_batch_size, queue, criterion, optimizer, device, train_be
         feats = feats.to(device)
         scripts = scripts.to(device)
 
-        src_len = scripts.size(1)
+        # src_len = scripts.size(1)
         target = scripts[:, 1:]
 
         model.module.flatten_parameters()
@@ -164,18 +160,17 @@ def train(model, total_batch_size, queue, criterion, optimizer, device, train_be
             epoch_elapsed = (current - epoch_begin) / 60.0
             train_elapsed = (current - train_begin) / 3600.0
 
-            logger.info('batch: {:4d}/{:4d}, loss: {:.4f}, cer: {:.2f}, elapsed: {:.2f}s {:.2f}m {:.2f}h'
-                .format(batch,
-                        #len(dataloader),
-                        total_batch_size,
-                        total_loss / total_num,
-                        total_dist / total_length,
-                        elapsed, epoch_elapsed, train_elapsed))
+            logger.info(
+                'batch: {:4d}/{:4d}, loss: {:.4f}, cer: {:.2f}, elapsed: \
+                {:.2f}s {:.2f}m {:.2f}h'.format(
+                    batch, total_batch_size, total_loss / total_num,
+                    total_dist / total_length, elapsed, epoch_elapsed,
+                    train_elapsed))
             begin = time.time()
 
-            nsml.report(False,
-                        step=train.cumulative_batch_count, train_step__loss=total_loss/total_num,
-                        train_step__cer=total_dist/total_length)
+            nsml.report(False, step=train.cumulative_batch_count,
+                        train_step__loss=total_loss / total_num,
+                        train_step__cer=total_dist / total_length)
         batch += 1
         train.cumulative_batch_count += 1
 
@@ -205,7 +200,7 @@ def evaluate(model, dataloader, queue, criterion, device):
             feats = feats.to(device)
             scripts = scripts.to(device)
 
-            src_len = scripts.size(1)
+            # src_len = scripts.size(1)
             target = scripts[:, 1:]
 
             model.module.flatten_parameters()
@@ -226,6 +221,7 @@ def evaluate(model, dataloader, queue, criterion, device):
 
     logger.info('evaluate() completed')
     return total_loss / total_num, total_dist / total_length
+
 
 def bind_model(model, optimizer=None):
     def load(filename, **kwargs):
@@ -257,10 +253,12 @@ def bind_model(model, optimizer=None):
 
         return hyp[0]
 
-    nsml.bind(save=save, load=load, infer=infer) # 'nsml.bind' function must be called at the end.
+    # 'nsml.bind' function must be called at the end.
+    nsml.bind(save=save, load=load, infer=infer)
+
 
 def split_dataset(config, wav_paths, script_paths, valid_ratio=0.05):
-    train_loader_count = config.workers
+    # train_loader_count = config.workers
     records_num = len(wav_paths)
     batch_num = math.ceil(records_num / config.batch_size)
 
@@ -280,15 +278,16 @@ def split_dataset(config, wav_paths, script_paths, valid_ratio=0.05):
         train_begin_raw_id = train_begin * config.batch_size
         train_end_raw_id = train_end * config.batch_size
 
-        train_dataset_list.append(BaseDataset(
-                                        wav_paths[train_begin_raw_id:train_end_raw_id],
-                                        script_paths[train_begin_raw_id:train_end_raw_id],
-                                        SOS_token, EOS_token))
-        train_begin = train_end 
+        train_dataset_list.append(
+            BaseDataset(wav_paths[train_begin_raw_id:train_end_raw_id],
+                        script_paths[train_begin_raw_id:train_end_raw_id],
+                        SOS_token, EOS_token))
+        train_begin = train_end
 
     valid_dataset = BaseDataset(wav_paths[train_end_raw_id:], script_paths[train_end_raw_id:], SOS_token, EOS_token)
 
     return train_batch_num, train_dataset_list, valid_dataset
+
 
 def main():
 
@@ -407,9 +406,9 @@ def main():
 
         valid_loader.join()
 
-        nsml.report(False,
-            step=epoch, train_epoch__loss=train_loss, train_epoch__cer=train_cer,
-            eval__loss=eval_loss, eval__cer=eval_cer)
+        nsml.report(False, step=epoch, train_epoch__loss=train_loss,
+                    train_epoch__cer=train_cer, eval__loss=eval_loss,
+                    eval__cer=eval_cer)
 
         best_model = (eval_loss < best_loss)
         nsml.save(args.save_name)
@@ -417,6 +416,7 @@ def main():
         if best_model:
             nsml.save('best')
             best_loss = eval_loss
+
 
 if __name__ == "__main__":
     main()
