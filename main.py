@@ -45,8 +45,10 @@ PAD_token = 0
 if nsml.HAS_DATASET:
     DATASET_PATH = nsml.DATASET_PATH
 else:
-    DATASET_PATH = '/home/jongho/data/datasets/STT-NH'
-DATASET_PATH = osp.join(DATASET_PATH, 'train')
+    with open('dataset_path.txt', 'r') as f:
+        DATASET_PATH = f.readlines()[0].strip()
+
+DATASET_PATH = os.path.join(DATASET_PATH, 'train')
 
 
 def label_to_string(labels):
