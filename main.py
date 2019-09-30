@@ -17,6 +17,7 @@ limitations under the License.
 # -*- coding: utf-8 -*-
 
 import os
+import os.path as osp
 import time
 import math
 import argparse
@@ -33,6 +34,7 @@ from loader import logger, get_spectrogram_feature, load_targets, BaseDataset, \
 from models import EncoderRNN, DecoderRNN, Seq2seq
 
 import nsml
+from tensorboardX import SummaryWriter
 
 char2index = dict()
 index2char = dict()
@@ -44,7 +46,7 @@ if nsml.HAS_DATASET:
     DATASET_PATH = nsml.DATASET_PATH
 else:
     DATASET_PATH = '/home/jongho/data/datasets/STT-NH'
-DATASET_PATH = os.path.join(DATASET_PATH, 'train')
+DATASET_PATH = osp.join(DATASET_PATH, 'train')
 
 
 def label_to_string(labels):
@@ -94,7 +96,8 @@ def get_distance(ref_labels, hyp_labels, display=False):
     return total_dist, total_length
 
 
-def train(model, total_batch_size, queue, criterion, optimizer, device, train_begin, train_loader_count, print_batch=5, teacher_forcing_ratio=1):
+def train(model, total_batch_size, queue, criterion, optimizer, device, train_begin,
+          train_loader_count, print_batch=100, teacher_forcing_ratio=1):
     total_loss = 0.
     total_num = 0
     total_dist = 0
@@ -161,11 +164,9 @@ def train(model, total_batch_size, queue, criterion, optimizer, device, train_be
             train_elapsed = (current - train_begin) / 3600.0
 
             logger.info(
-                'batch: {:4d}/{:4d}, loss: {:.4f}, cer: {:.2f}, elapsed: \
-                {:.2f}s {:.2f}m {:.2f}h'.format(
-                    batch, total_batch_size, total_loss / total_num,
-                    total_dist / total_length, elapsed, epoch_elapsed,
-                    train_elapsed))
+                'batch: {:4d}/{:4d}, loss: {:.4f}, cer: {:.2f}, elapsed: {:.2f}s {:.2f}m {:.2f}h'.
+                format(batch, total_batch_size, total_loss / total_num, total_dist / total_length,
+                       elapsed, epoch_elapsed, train_elapsed))
             begin = time.time()
 
             nsml.report(False, step=train.cumulative_batch_count,
@@ -209,7 +210,8 @@ def evaluate(model, dataloader, queue, criterion, device):
             logit = torch.stack(logit, dim=1).to(device)
             y_hat = logit.max(-1)[1]
 
-            loss = criterion(logit.contiguous().view(-1, logit.size(-1)), target.contiguous().view(-1))
+            loss = criterion(logit.contiguous().view(-1, logit.size(-1)),
+                             target.contiguous().view(-1))
             total_loss += loss.item()
             total_num += sum(feat_lengths)
 
@@ -225,7 +227,7 @@ def evaluate(model, dataloader, queue, criterion, device):
 
 def bind_model(model, optimizer=None):
     def load(filename, **kwargs):
-        state = torch.load(os.path.join(filename, 'model.pt'))
+        state = torch.load(osp.join(filename, 'model.pt'))
         model.load_state_dict(state['model'])
         if 'optimizer' in state and optimizer:
             optimizer.load_state_dict(state['optimizer'])
@@ -236,7 +238,7 @@ def bind_model(model, optimizer=None):
             'model': model.state_dict(),
             'optimizer': optimizer.state_dict()
         }
-        torch.save(state, os.path.join(filename, 'model.pt'))
+        torch.save(state, osp.join(filename, 'model.pt'))
 
     def infer(wav_path):
         model.eval()
@@ -284,7 +286,8 @@ def split_dataset(config, wav_paths, script_paths, valid_ratio=0.05):
                         SOS_token, EOS_token))
         train_begin = train_end
 
-    valid_dataset = BaseDataset(wav_paths[train_end_raw_id:], script_paths[train_end_raw_id:], SOS_token, EOS_token)
+    valid_dataset = BaseDataset(wav_paths[train_end_raw_id:], script_paths[train_end_raw_id:],
+                                SOS_token, EOS_token)
 
     return train_batch_num, train_dataset_list, valid_dataset
 
@@ -298,7 +301,7 @@ def main():
     global PAD_token
 
     parser = argparse.ArgumentParser(description='Speech hackathon Baseline')
-    parser.add_argument('--hidden_size', type=int, default=512, help='hidden size of model (default: 256)')
+    parser.add_argument('--hidden_size', type=int, default=512, help='hidden size of model (default: 512)')
     parser.add_argument('--layer_size', type=int, default=3, help='number of layers of model (default: 3)')
     parser.add_argument('--dropout', type=float, default=0.2, help='dropout rate in training (default: 0.2)')
     parser.add_argument('--bidirectional', action='store_true', help='use bidirectional RNN for encoder (default: False)')
@@ -309,13 +312,30 @@ def main():
     parser.add_argument('--lr', type=float, default=1e-04, help='learning rate (default: 0.0001)')
     parser.add_argument('--teacher_forcing', type=float, default=0.5, help='teacher forcing ratio in decoder (default: 0.5)')
     parser.add_argument('--max_len', type=int, default=80, help='maximum characters of sentence (default: 80)')
-    parser.add_argument('--no_cuda', action='store_true', default=False, help='disables CUDA training')
+    parser.add_argument('--no_cuda', action='store_true', help='disables CUDA training')
     parser.add_argument('--seed', type=int, default=1, help='random seed (default: 1)')
     parser.add_argument('--save_name', type=str, default='model', help='the name of model in nsml or local')
     parser.add_argument('--mode', type=str, default='train')
-    parser.add_argument("--pause", type=int, default=0)
+    parser.add_argument('--pause', type=int, default=0)
+
+    parser.add_argument('--log_dir', help='directory for logging, valid in local only')
 
     args = parser.parse_args()
+
+    for name, value in args.__dict__.items():
+        print('{}:\t{}'.format(name, value))
+    print()
+
+    if nsml.IS_ON_NSML:
+        args.log_dir = None
+
+    if args.log_dir is not None:
+        if not osp.exists(args.log_dir):
+            os.makedirs(args.log_dir)
+
+        with open(osp.join(args.log_dir, 'args.txt'), 'w') as f:
+            for name, value in args.__dict__.items():
+                f.write('{}\t{}\n'.format(name, value))
 
     char2index, index2char = label_loader.load_label('./hackathon.labels')
     SOS_token = char2index['<s>']
@@ -332,14 +352,16 @@ def main():
     # N_FFT: defined in loader.py
     feature_size = N_FFT / 2 + 1
 
-    enc = EncoderRNN(feature_size, args.hidden_size,
-                     input_dropout_p=args.dropout, dropout_p=args.dropout,
-                     n_layers=args.layer_size, bidirectional=args.bidirectional, rnn_cell='gru', variable_lengths=False)
+    enc = EncoderRNN(
+        feature_size, args.hidden_size, input_dropout_p=args.dropout, dropout_p=args.dropout,
+        n_layers=args.layer_size, bidirectional=args.bidirectional, rnn_cell='gru',
+        variable_lengths=False)
 
-    dec = DecoderRNN(len(char2index), args.max_len, args.hidden_size * (2 if args.bidirectional else 1),
-                     SOS_token, EOS_token,
-                     n_layers=args.layer_size, rnn_cell='gru', bidirectional=args.bidirectional,
-                     input_dropout_p=args.dropout, dropout_p=args.dropout, use_attention=args.use_attention)
+    dec = DecoderRNN(
+        len(char2index), args.max_len, args.hidden_size * (2 if args.bidirectional else 1),
+        SOS_token, EOS_token, n_layers=args.layer_size, rnn_cell='gru',
+        bidirectional=args.bidirectional, input_dropout_p=args.dropout, dropout_p=args.dropout,
+        use_attention=args.use_attention)
 
     model = Seq2seq(enc, dec)
     model.flatten_parameters()
@@ -360,7 +382,7 @@ def main():
     if args.mode != "train":
         return
 
-    data_list = os.path.join(DATASET_PATH, 'train_data', 'data_list.csv')
+    data_list = osp.join(DATASET_PATH, 'train_data', 'data_list.csv')
     wav_paths = list()
     script_paths = list()
 
@@ -369,21 +391,28 @@ def main():
             # line: "aaa.wav,aaa.label"
 
             wav_path, script_path = line.strip().split(',')
-            wav_paths.append(os.path.join(DATASET_PATH, 'train_data', wav_path))
-            script_paths.append(os.path.join(DATASET_PATH, 'train_data', script_path))
+            wav_paths.append(osp.join(DATASET_PATH, 'train_data', wav_path))
+            script_paths.append(osp.join(DATASET_PATH, 'train_data', script_path))
 
     best_loss = 1e10
     begin_epoch = 0
 
     # load all target scripts for reducing disk i/o
-    target_path = os.path.join(DATASET_PATH, 'train_label')
+    target_path = osp.join(DATASET_PATH, 'train_label')
     load_targets(target_path)
 
-    train_batch_num, train_dataset_list, valid_dataset = split_dataset(args, wav_paths, script_paths, valid_ratio=0.05)
+    train_batch_num, train_dataset_list, valid_dataset = split_dataset(
+        args, wav_paths, script_paths, valid_ratio=0.05)
 
     logger.info('start')
 
     train_begin = time.time()
+
+    if args.log_dir is not None:
+        train_writer = SummaryWriter(logdir=osp.join(args.log_dir, 'train'))
+        valid_writer = SummaryWriter(logdir=osp.join(args.log_dir, 'valid'))
+    else:
+        train_writer, valid_writer = None, None
 
     for epoch in range(begin_epoch, args.max_epochs):
 
@@ -392,8 +421,12 @@ def main():
         train_loader = MultiLoader(train_dataset_list, train_queue, args.batch_size, args.workers)
         train_loader.start()
 
-        train_loss, train_cer = train(model, train_batch_num, train_queue, criterion, optimizer, device, train_begin, args.workers, 10, args.teacher_forcing)
+        train_loss, train_cer = train(model, train_batch_num, train_queue, criterion, optimizer,
+                                      device, train_begin, args.workers, 100, args.teacher_forcing)
         logger.info('Epoch %d (Training) Loss %0.4f CER %0.4f' % (epoch, train_loss, train_cer))
+        if args.log_dir is not None:
+            train_writer.add_scalar('epoch/loss', train_loss, epoch)
+            train_writer.add_scalar('epoch/CER', train_cer, epoch)
 
         train_loader.join()
 
@@ -403,12 +436,19 @@ def main():
 
         eval_loss, eval_cer = evaluate(model, valid_loader, valid_queue, criterion, device)
         logger.info('Epoch %d (Evaluate) Loss %0.4f CER %0.4f' % (epoch, eval_loss, eval_cer))
+        if args.log_dir is not None:
+            valid_writer.add_scalar('epoch/loss', eval_loss, epoch)
+            valid_writer.add_scalar('epoch/CER', eval_cer, epoch)
+
+            with open(osp.join(args.log_dir, 'loss.txt'), 'a') as f:
+                f.write('epoch: {}, train: {:.6f}, valid: {:.6f}\n'.format(epoch, train_loss, eval_loss))
+            with open(osp.join(args.log_dir, 'CER.txt'), 'a') as f:
+                f.write('epoch: {}, train: {:.6f}, valid: {:.6f}\n'.format(epoch, train_cer, eval_cer))
 
         valid_loader.join()
 
-        nsml.report(False, step=epoch, train_epoch__loss=train_loss,
-                    train_epoch__cer=train_cer, eval__loss=eval_loss,
-                    eval__cer=eval_cer)
+        nsml.report(False, step=epoch, train_epoch__loss=train_loss, train_epoch__cer=train_cer,
+                    eval__loss=eval_loss, eval__cer=eval_cer)
 
         best_model = (eval_loss < best_loss)
         nsml.save(args.save_name)
