@@ -9,8 +9,8 @@ LAYER_SIZE=4
 
 for HIDDEN_SIZE in 384 640 512
 do
-    python ./main.py --log_dir log/ls${LAYER_SIZE}_hs${HIDDEN_SIZE} --layer_size ${LAYER_SIZE} --batch_size $BATCH_SIZE --workers ${WORKER_SIZE} \
-        --use_attention --max_epochs $MAX_EPOCHS
+    python ./main.py --log_dir log/ls${LAYER_SIZE}_hs${HIDDEN_SIZE} --layer_size ${LAYER_SIZE} --hidden_size ${HIDDEN_SIZE} \
+        --batch_size $BATCH_SIZE --workers ${WORKER_SIZE} --use_attention --max_epochs $MAX_EPOCHS
 done
 
 #HIDDEN_SIZE=384
