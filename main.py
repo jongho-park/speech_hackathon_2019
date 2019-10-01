@@ -470,6 +470,8 @@ def main():
         else:
             cnt_converged = 0
 
+        prev_eval_loss = eval_loss
+
 
 if __name__ == "__main__":
     main()
