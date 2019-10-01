@@ -321,6 +321,7 @@ def main():
     parser.add_argument('--pause', type=int, default=0)
 
     parser.add_argument('--log_dir', help='directory for logging, valid in local only')
+    parser.add_argument('--patience', type=int, default=1, help='patience before early stopping')
 
     args = parser.parse_args()
 
@@ -416,6 +417,8 @@ def main():
     else:
         train_writer, valid_writer = None, None
 
+    cnt_converged, prev_eval_loss = 0, math.inf
+
     for epoch in range(begin_epoch, args.max_epochs):
 
         train_queue = queue.Queue(args.workers * 2)
@@ -458,6 +461,13 @@ def main():
         if best_model:
             nsml.save('best')
             best_loss = eval_loss
+
+        if eval_loss > prev_eval_loss:
+            cnt_converged += 1
+            if cnt_converged > args.patience:
+                break
+        else:
+            cnt_converged = 0
 
 
 if __name__ == "__main__":
