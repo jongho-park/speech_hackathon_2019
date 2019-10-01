@@ -34,7 +34,8 @@ from loader import logger, get_spectrogram_feature, load_targets, BaseDataset, \
 from models import EncoderRNN, DecoderRNN, Seq2seq
 
 import nsml
-from tensorboardX import SummaryWriter
+if not nsml.IS_ON_NSML:
+    from tensorboardX import SummaryWriter
 
 char2index = dict()
 index2char = dict()
@@ -456,7 +457,7 @@ def main():
                     eval__loss=eval_loss, eval__cer=eval_cer)
 
         best_model = (eval_loss < best_loss)
-        nsml.save(args.save_name)
+        nsml.save(args.save_name + '_e{}'.format(epoch))
 
         if best_model:
             nsml.save('best')
