@@ -322,7 +322,10 @@ def main():
     parser.add_argument('--pause', type=int, default=0)
 
     parser.add_argument('--log_dir', help='directory for logging, valid in local only')
-    parser.add_argument('--patience', type=int, default=1, help='patience before early stopping')
+    parser.add_argument('--patience', type=int, help='patience before early stopping (default to None)')
+    parser.add_argument('--weight_decay', type=float, default=0, help='weight for L2 regularization')
+    parser.add_argument('--save_from', type=int, default=0, help='starting epoch to save models')
+    parser.add_argument('--load_ckpt', nargs=2, help='session and checkpoint to load')
 
     args = parser.parse_args()
 
@@ -375,10 +378,13 @@ def main():
 
     model = nn.DataParallel(model).to(device)
 
-    optimizer = optim.Adam(model.module.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.module.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     criterion = nn.CrossEntropyLoss(reduction='sum', ignore_index=PAD_token).to(device)
 
     bind_model(model, optimizer)
+
+    if args.load_ckpt is not None:
+        nsml.load(session=args.load_ckpt[0], checkpoint=args.load_ckpt[1])
 
     if args.pause == 1:
         nsml.paused(scope=locals())
@@ -398,6 +404,7 @@ def main():
             wav_paths.append(osp.join(DATASET_PATH, 'train_data', wav_path))
             script_paths.append(osp.join(DATASET_PATH, 'train_data', script_path))
 
+    cnt_converged = 0
     best_loss = 1e10
     begin_epoch = 0
 
@@ -418,12 +425,17 @@ def main():
     else:
         train_writer, valid_writer = None, None
 
-    cnt_converged, prev_eval_loss = 0, math.inf
-
     for epoch in range(begin_epoch, args.max_epochs):
+        if args.load_ckpt is not None:
+            valid_queue = queue.Queue(args.workers * 2)
+            valid_loader = BaseDataLoader(valid_dataset, valid_queue, args.batch_size, 0)
+            valid_loader.start()
+
+            eval_loss, eval_cer = evaluate(model, valid_loader, valid_queue, criterion, device)
+            logger.info('Eval right after model loading (just for checking)')
+            logger.info('Epoch %d (Evaluate) Loss %0.4f CER %0.4f' % (epoch, eval_loss, eval_cer))
 
         train_queue = queue.Queue(args.workers * 2)
-
         train_loader = MultiLoader(train_dataset_list, train_queue, args.batch_size, args.workers)
         train_loader.start()
 
@@ -456,21 +468,20 @@ def main():
         nsml.report(False, step=epoch, train_epoch__loss=train_loss, train_epoch__cer=train_cer,
                     eval__loss=eval_loss, eval__cer=eval_cer)
 
-        best_model = (eval_loss < best_loss)
-        nsml.save(args.save_name + '_e{}'.format(epoch))
+        if epoch > args.save_from:
+            nsml.save(args.save_name + '_e{}'.format(epoch))
 
+        best_model = (eval_loss < best_loss)
         if best_model:
             nsml.save('best')
             best_loss = eval_loss
 
-        if eval_loss > prev_eval_loss:
+        if eval_loss > best_loss:
             cnt_converged += 1
             if cnt_converged > args.patience:
                 break
         else:
             cnt_converged = 0
-
-        prev_eval_loss = eval_loss
 
 
 if __name__ == "__main__":
