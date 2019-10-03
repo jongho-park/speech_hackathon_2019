@@ -25,7 +25,10 @@ import torch
 import random
 import threading
 import logging
+import librosa
+import numpy as np
 from torch.utils.data import Dataset, DataLoader
+
 
 logger = logging.getLogger('root')
 FORMAT = "[%(asctime)s %(filename)s:%(lineno)s - %(funcName)s()] %(message)s"
@@ -36,6 +39,9 @@ PAD = 0
 N_FFT = 512
 SAMPLE_RATE = 16000
 
+MIN_SIGNAL_VALUE = 120
+MAX_SIGNAL_LENGTH = 200000
+
 target_dict = dict()
 
 def load_targets(path):
@@ -44,9 +50,17 @@ def load_targets(path):
             key, target = line.strip().split(',')
             target_dict[key] = target
 
+
 def get_spectrogram_feature(filepath):
     (rate, width, sig) = wavio.readwav(filepath)
     sig = sig.ravel()
+
+    # sig, _ = librosa.effects.trim(sig.astype(np.float32))
+    valid_pos = np.where(sig > MIN_SIGNAL_VALUE)[0]
+    sig = sig[valid_pos[0]:valid_pos[-1]]
+
+    if len(sig) > MAX_SIGNAL_LENGTH:
+        sig = sig[:MAX_SIGNAL_LENGTH]
 
     stft = torch.stft(torch.FloatTensor(sig),
                         N_FFT,
@@ -59,6 +73,7 @@ def get_spectrogram_feature(filepath):
 
     stft = (stft[:,:,0].pow(2) + stft[:,:,1].pow(2)).pow(0.5);
     amag = stft.numpy();
+
     feat = torch.FloatTensor(amag)
     feat = torch.FloatTensor(feat).transpose(0, 1)
 
@@ -153,7 +168,7 @@ class BaseDataLoader(threading.Thread):
         while True:
             items = list()
 
-            for i in range(self.batch_size): 
+            for i in range(self.batch_size):
                 if self.index >= self.dataset_count:
                     break
 
