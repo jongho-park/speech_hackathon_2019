@@ -16,11 +16,11 @@ limitations under the License.
 
 """
 
-import sys
 import math
 import torch.nn as nn
 
 from .baseRNN import BaseRNN
+
 
 class EncoderRNN(BaseRNN):
     r"""
@@ -60,11 +60,10 @@ class EncoderRNN(BaseRNN):
     def __init__(self, feature_size, hidden_size,
                  input_dropout_p=0, dropout_p=0,
                  n_layers=1, bidirectional=False, rnn_cell='gru', variable_lengths=False):
-        super(EncoderRNN, self).__init__(0, 0, hidden_size,
-                input_dropout_p, dropout_p, n_layers, rnn_cell)
+        super(EncoderRNN, self).__init__(0, 0, hidden_size, input_dropout_p, dropout_p, n_layers,
+                                         rnn_cell)
 
         self.variable_lengths = variable_lengths
-        
 
         """
         Copied from https://github.com/SeanNaren/deepspeech.pytorch/blob/master/model.py
@@ -80,8 +79,8 @@ class EncoderRNN(BaseRNN):
             nn.Hardtanh(0, 20, inplace=True)
         )
 
-        feature_size = math.ceil((feature_size - 11 + 1 + (5*2)) / 2)
-        feature_size = math.ceil(feature_size - 11 + 1 + (5*2))
+        feature_size = math.ceil((feature_size - 11 + 1 + (5 * 2)) / 2)
+        feature_size = math.ceil(feature_size - 11 + 1 + (5 * 2))
         feature_size *= 32
 
         self.rnn = self.rnn_cell(feature_size, hidden_size, n_layers,
@@ -100,11 +99,10 @@ class EncoderRNN(BaseRNN):
             - **output** (batch, seq_len, hidden_size): variable containing the encoded features of the input sequence
             - **hidden** (num_layers * num_directions, batch, hidden_size): variable containing the features in the hidden state h
         """
-        
         input_var = input_var.unsqueeze(1)
         x = self.conv(input_var)
 
-        # BxCxTxD => BxCxDxT
+        # BxCxTxD => BxTxCxD
         x = x.transpose(1, 2)
         x = x.contiguous()
         sizes = x.size()
