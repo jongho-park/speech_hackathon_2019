@@ -31,7 +31,7 @@ import Levenshtein as Lev
 import label_loader
 from loader import logger, get_spectrogram_feature, load_targets, BaseDataset, \
     BaseDataLoader, MultiLoader, N_FFT
-from models import EncoderRNN, DecoderRNN, Seq2seq
+from models import EncoderRNN, DecoderRNN, Seq2seq, Seq2SeqTransformerEncoder, Encoder
 
 import nsml
 if not nsml.IS_ON_NSML:
@@ -327,6 +327,8 @@ def main():
     parser.add_argument('--save_from', type=int, default=0, help='starting epoch to save models')
     parser.add_argument('--load_ckpt', nargs=2, help='session and checkpoint to load')
 
+    parser.add_argument('--transformer_encoder', action='store_true')
+
     args = parser.parse_args()
 
     for name, value in args.__dict__.items():
@@ -359,10 +361,14 @@ def main():
     # N_FFT: defined in loader.py
     feature_size = N_FFT / 2 + 1
 
-    enc = EncoderRNN(
-        feature_size, args.hidden_size, input_dropout_p=args.dropout, dropout_p=args.dropout,
-        n_layers=args.layer_size, bidirectional=args.bidirectional, rnn_cell='gru',
-        variable_lengths=False)
+    if args.transformer_encoder:
+        enc = Encoder(len_max_seq=1248, d_word_vec=257, n_layers=6, n_head=8, d_k=64, d_v=64,
+                      d_model=256, d_inner=2048, dropout=0.1)
+    else:
+        enc = EncoderRNN(
+            feature_size, args.hidden_size, input_dropout_p=args.dropout, dropout_p=args.dropout,
+            n_layers=args.layer_size, bidirectional=args.bidirectional, rnn_cell='gru',
+            variable_lengths=False)
 
     dec = DecoderRNN(
         len(char2index), args.max_len, args.hidden_size * (2 if args.bidirectional else 1),
@@ -370,7 +376,10 @@ def main():
         bidirectional=args.bidirectional, input_dropout_p=args.dropout, dropout_p=args.dropout,
         use_attention=args.use_attention)
 
-    model = Seq2seq(enc, dec)
+    if args.transformer_encoder:
+        model = Seq2SeqTransformerEncoder(enc, dec)
+    else:
+        model = Seq2seq(enc, dec)
     model.flatten_parameters()
 
     for param in model.parameters():

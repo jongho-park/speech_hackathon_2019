@@ -75,3 +75,24 @@ class Seq2seq(nn.Module):
                               function=self.decode_function,
                               teacher_forcing_ratio=teacher_forcing_ratio)
         return result[0]
+
+
+class Seq2SeqTransformerEncoder(nn.Module):
+    def __init__(self, encoder, decoder, decode_function=F.log_softmax):
+        super(Seq2SeqTransformerEncoder, self).__init__()
+        self.encoder = encoder
+        self.decoder = decoder
+        self.decode_function = decode_function
+
+    def flatten_parameters(self):
+        self.decoder.rnn.flatten_parameters()
+
+    def forward(self, input_variable, input_lengths=None, target_variable=None,
+                teacher_forcing_ratio=0):
+        encoder_outputs, = self.encoder(input_variable, input_lengths)
+
+        result = self.decoder(inputs=target_variable,
+                              encoder_outputs=encoder_outputs,
+                              function=self.decode_function,
+                              teacher_forcing_ratio=teacher_forcing_ratio)
+        return result[0]

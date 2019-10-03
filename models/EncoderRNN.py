@@ -102,6 +102,8 @@ class EncoderRNN(BaseRNN):
         input_var = input_var.unsqueeze(1)
         x = self.conv(input_var)
 
+        # print('input_var: {}, x: {}'.format(input_var.shape, x.shape))
+
         # BxCxTxD => BxTxCxD
         x = x.transpose(1, 2)
         x = x.contiguous()
