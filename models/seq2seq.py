@@ -89,6 +89,7 @@ class Seq2SeqTransformerEncoder(nn.Module):
 
     def forward(self, input_variable, input_lengths=None, target_variable=None,
                 teacher_forcing_ratio=0):
+
         encoder_outputs, = self.encoder(input_variable, input_lengths)
 
         result = self.decoder(inputs=target_variable,

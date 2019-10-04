@@ -74,20 +74,19 @@ class Encoder(nn.Module):
             EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
             for _ in range(n_layers)])
 
-    def forward(self, src_seq, src_pos=None, return_attns=False):
-        import pudb; pudb.set_trace()  # XXX DEBUG
-
+    def forward(self, src_seq, src_lengths, return_attns=False):
         enc_slf_attn_list = []
 
         # -- Prepare masks
-        slf_attn_mask = get_attn_key_pad_mask(seq_k=src_seq, seq_q=src_seq)
-        non_pad_mask = get_non_pad_mask(src_seq)
+        seq_summed = src_seq.sum(2)  # [B x T]
+        slf_attn_mask = get_attn_key_pad_mask(seq_k=seq_summed, seq_q=seq_summed)
+        non_pad_mask = get_non_pad_mask(seq_summed)
 
         # -- Forward
-        if src_pos is None:
-            enc_output = src_seq
-        else:
-            enc_output = src_seq + self.position_enc(src_pos)
+        src_pos = torch.arange(src_seq.size(1)).unsqueeze(0).expand(src_seq.size(0), -1)
+        if src_seq.is_cuda:
+            src_pos = src_pos.cuda(src_seq.device)
+        enc_output = src_seq + self.position_enc(src_pos)
 
         for enc_layer in self.layer_stack:
             enc_output, enc_slf_attn = enc_layer(
