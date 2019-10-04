@@ -61,7 +61,7 @@ class Encoder(nn.Module):
     ''' A encoder model with self attention mechanism. '''
 
     def __init__( self, len_max_seq, d_word_vec, n_layers, n_head, d_k, d_v, d_model, d_inner,
-                 dropout=0.1):
+                 dropout=0.1, share_params=False):
         super().__init__()
 
         n_position = len_max_seq + 1
@@ -70,9 +70,13 @@ class Encoder(nn.Module):
             get_sinusoid_encoding_table(n_position, d_word_vec, padding_idx=0),
             freeze=True)
 
-        self.layer_stack = nn.ModuleList([
-            EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
-            for _ in range(n_layers)])
+        if share_params:
+            self.layer_stack = nn.ModuleList(
+                [EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)] * n_layers)
+        else:
+            self.layer_stack = nn.ModuleList([
+                EncoderLayer(d_model, d_inner, n_head, d_k, d_v, dropout=dropout)
+                for _ in range(n_layers)])
 
     def forward(self, src_seq, src_lengths, return_attns=False):
         enc_slf_attn_list = []

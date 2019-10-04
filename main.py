@@ -328,6 +328,7 @@ def main():
     parser.add_argument('--load_ckpt', nargs=2, help='session and checkpoint to load')
 
     parser.add_argument('--transformer_encoder', action='store_true')
+    parser.add_argument('--share_params', action='store_true')
 
     args = parser.parse_args()
 
@@ -363,7 +364,7 @@ def main():
 
     if args.transformer_encoder:
         enc = Encoder(len_max_seq=1248, d_word_vec=257, n_layers=6, n_head=8, d_k=64, d_v=64,
-                      d_model=257, d_inner=2048, dropout=0.1)
+                      d_model=257, d_inner=2048, dropout=0.1, share_params=args.share_params)
     else:
         enc = EncoderRNN(
             feature_size, args.hidden_size, input_dropout_p=args.dropout, dropout_p=args.dropout,
